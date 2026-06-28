@@ -2,12 +2,26 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import time
 
 from model import train_model, predict_signal, add_features, FEATURE_COLS
+
+# Set up matplotlib style for dark black & white theme
+plt.rcParams.update({
+    'figure.facecolor': '#000000',
+    'axes.facecolor': '#000000',
+    'axes.edgecolor': '#262626',
+    'axes.labelcolor': '#ffffff',
+    'xtick.color': '#a3a3a3',
+    'ytick.color': '#a3a3a3',
+    'text.color': '#ffffff',
+    'grid.color': '#171717',
+    'grid.linestyle': '--',
+    'grid.linewidth': 0.5
+})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -20,7 +34,7 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CUSTOM CSS — Dark navy theme (matches your Apex Screener palette)
+# CUSTOM CSS — Dark Black & White Monochromatic Theme
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -28,102 +42,112 @@ st.markdown("""
 
 html, body, [class*="css"] {
     font-family: 'DM Sans', sans-serif;
-    background-color: #0a1520;
-    color: #e2e8f0;
+    background-color: #000000;
+    color: #e5e5e5;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    background: #0f1923 !important;
-    border-right: 1px solid #1e2d3d;
+    background: #0d0d0d !important;
+    border-right: 1px solid #262626;
 }
-section[data-testid="stSidebar"] * { color: #cbd5e1 !important; }
+section[data-testid="stSidebar"] * { color: #d4d4d4 !important; }
 
 /* Cards */
 .card {
-    background: #0f1923;
-    border: 1px solid #1e2d3d;
-    border-radius: 12px;
+    background: #0d0d0d;
+    border: 1px solid #262626;
+    border-radius: 8px;
     padding: 20px 24px;
     margin-bottom: 16px;
 }
-.card-accent { border-left: 3px solid #38bdf8; }
+.card-accent { border-left: 3px solid #ffffff; }
 
-/* Signal badges */
+/* Signal badges - soft actionable color highlights */
 .signal-buy {
     display:inline-block; padding:10px 28px;
-    background:linear-gradient(135deg,#065f46,#047857);
-    color:#6ee7b7; font-size:1.6rem; font-weight:700;
-    border-radius:10px; border:1px solid #047857;
+    background: #0f2d1e;
+    color: #22c55e; font-size:1.6rem; font-weight:700;
+    border-radius:8px; border:1px solid #1b4d32;
     font-family:'JetBrains Mono',monospace; letter-spacing:2px;
 }
 .signal-sell {
     display:inline-block; padding:10px 28px;
-    background:linear-gradient(135deg,#7f1d1d,#b91c1c);
-    color:#fca5a5; font-size:1.6rem; font-weight:700;
-    border-radius:10px; border:1px solid #b91c1c;
+    background: #3d1616;
+    color: #ef4444; font-size:1.6rem; font-weight:700;
+    border-radius:8px; border:1px solid #632020;
     font-family:'JetBrains Mono',monospace; letter-spacing:2px;
 }
 .signal-hold {
     display:inline-block; padding:10px 28px;
-    background:linear-gradient(135deg,#1c3149,#1e3a5f);
-    color:#7dd3fc; font-size:1.6rem; font-weight:700;
-    border-radius:10px; border:1px solid #38bdf8;
+    background: #1a1a1a;
+    color: #a3a3a3; font-size:1.6rem; font-weight:700;
+    border-radius:8px; border:1px solid #333333;
     font-family:'JetBrains Mono',monospace; letter-spacing:2px;
 }
 
 /* Metric tiles */
 .metric-tile {
-    background:#0f1923; border:1px solid #1e2d3d;
-    border-radius:10px; padding:16px 20px; text-align:center;
+    background: #0d0d0d; border: 1px solid #262626;
+    border-radius: 8px; padding: 16px 20px; text-align: center;
+    min-width: 140px;
 }
-.metric-label { font-size:0.75rem; color:#64748b; text-transform:uppercase; letter-spacing:1px; }
-.metric-value { font-size:1.5rem; font-weight:700; color:#38bdf8; font-family:'JetBrains Mono',monospace; }
-.metric-value.green  { color:#34d399; }
-.metric-value.red    { color:#f87171; }
-.metric-value.white  { color:#e2e8f0; }
+.metric-label { font-size:0.75rem; color:#737373; text-transform:uppercase; letter-spacing:1px; }
+.metric-value { font-size:1.4rem; font-weight:700; color:#ffffff; font-family:'JetBrains Mono',monospace; }
+.metric-value.white { color:#ffffff; }
+.metric-value.grey { color:#a3a3a3; }
+.metric-value.green { color:#22c55e !important; }
+.metric-value.red { color:#ef4444 !important; }
 
 /* Page title */
 .page-title {
     font-family:'DM Serif Display',serif;
-    font-size:2.4rem; color:#f1f5f9;
+    font-size:2.4rem; color:#ffffff;
     margin-bottom:4px;
 }
-.page-sub { color:#64748b; font-size:0.9rem; margin-bottom:28px; }
+.page-sub { color:#737373; font-size:0.9rem; margin-bottom:28px; }
 
 /* Progress bar override */
-.stProgress > div > div { background-color:#38bdf8 !important; }
+.stProgress > div > div { background-color:#ffffff !important; }
 
 /* Button */
-div.stButton > button {
-    background: linear-gradient(135deg,#0369a1,#0284c7);
-    color: white; border: none; border-radius: 8px;
-    padding: 10px 28px; font-weight:600;
-    font-family:'DM Sans',sans-serif;
+div.stButton > button, div.stButton > button * {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    border-radius: 6px;
+    font-weight: 600 !important;
+    font-family: 'DM Sans', sans-serif;
     transition: opacity 0.2s;
 }
-div.stButton > button:hover { opacity:0.85; }
+div.stButton > button {
+    padding: 10px 28px;
+    width: 100%;
+}
+div.stButton > button:hover, div.stButton > button:hover *, div.stButton > button:active, div.stButton > button:focus {
+    background-color: #f5f5f5 !important;
+    color: #000000 !important;
+    opacity: 0.9;
+}
 
 /* Hide Streamlit branding */
 #MainMenu, footer { visibility:hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 POPULAR_STOCKS = {
-    "🇮🇳 Indian Stocks": [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
-        "WIPRO.NS", "SBIN.NS", "TATAMOTORS.NS", "BAJFINANCE.NS", "ADANIENT.NS",
-    ],
     "🇺🇸 US Stocks": [
         "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
         "NVDA", "META", "NFLX", "JPM", "V",
     ],
+    "🇮🇳 Indian Stocks": [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
+        "WIPRO.NS", "SBIN.NS", "TATAMOTORS.NS", "BAJFINANCE.NS", "ADANIENT.NS",
+    ],
 }
-
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_data(ticker: str, period: str = "2y") -> pd.DataFrame:
@@ -131,14 +155,14 @@ def fetch_data(ticker: str, period: str = "2y") -> pd.DataFrame:
     df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
     return df
 
-
 def color_signal(sig):
-    return {"BUY": "🟢", "SELL": "🔴", "HOLD": "🔵"}.get(sig, "")
+    return {"BUY": "▲", "SELL": "▼", "HOLD": "■"}.get(sig, "")
 
-
-def fmt_price(v):
-    return f"₹{v:,.2f}" if v else "—"
-
+def fmt_price(v, ticker=""):
+    symbol = "$"
+    if ticker.endswith(".NS"):
+        symbol = "₹"
+    return f"{symbol}{v:,.2f}" if v is not None else "—"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
@@ -161,33 +185,32 @@ with st.sidebar:
     chart_days = st.slider("Chart lookback (days)", 30, 180, 90)
 
     st.divider()
-    run_btn = st.button("🚀 Analyze & Predict", use_container_width=True)
+    run_btn = st.button("🚀 Analyze & Predict")
 
     st.markdown("""
-    <div style='margin-top:24px; font-size:0.75rem; color:#475569;'>
-    Model: RF + GBT Ensemble<br>
-    Features: 17 technical indicators<br>
+    <div style='margin-top:24px; font-size:0.75rem; color:#737373;'>
+    Model: Random Forest Classifier<br>
+    Features: 7 technical indicators<br>
     Signal: BUY ≥60% | SELL ≤40%
     </div>
     """, unsafe_allow_html=True)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="page-title">📊 StockSense ML Predictor</div>', unsafe_allow_html=True)
-st.markdown('<div class="page-sub">Next-day price direction prediction using ensemble machine learning</div>', unsafe_allow_html=True)
+st.markdown('<div class="page-sub">Next-day price direction prediction using machine learning</div>', unsafe_allow_html=True)
 
 if not run_btn:
     # Landing state
     st.markdown("""
     <div class="card card-accent">
-    <h3 style='color:#38bdf8; font-family:"DM Serif Display",serif; margin-top:0'>How it works</h3>
-    <p style='color:#94a3b8; margin:0'>
-    Select a stock from the sidebar, choose your training period, then click <strong style='color:#e2e8f0'>Analyze & Predict</strong>.<br><br>
-    The model trains a <strong style='color:#38bdf8'>Random Forest + Gradient Boosting</strong> ensemble on 17 technical indicators
-    (RSI, MACD, Bollinger Bands, Moving Averages, Volatility, Volume signals) and predicts whether
-    tomorrow's price will be <strong style='color:#34d399'>UP ↑</strong> or <strong style='color:#f87171'>DOWN ↓</strong>,
+    <h3 style='color:#ffffff; font-family:"DM Serif Display",serif; margin-top:0'>How it works</h3>
+    <p style='color:#a3a3a3; margin:0'>
+    Select a stock from the sidebar, choose your training period, then click <strong style='color:#ffffff'>Analyze & Predict</strong>.<br><br>
+    The model trains a <strong style='color:#ffffff'>Random Forest Classifier</strong> on 7 core technical indicators
+    (RSI, MA ratios, price returns, and volume ratios) and predicts whether
+    tomorrow's price will be <strong style='color:#ffffff'>UP ↑</strong> or <strong style='color:#ffffff'>DOWN ↓</strong>,
     generating a <strong>BUY / SELL / HOLD</strong> signal.
     </p>
     </div>
@@ -195,27 +218,26 @@ if not run_btn:
 
     cols = st.columns(3)
     tips = [
-        ("🎯", "17 Features", "RSI, MACD, BB, MA crossovers, volume ratio & more"),
-        ("🤖", "Ensemble Model", "RandomForest + GradientBoosting soft-vote ensemble"),
-        ("⚡", "Live Data", "Real-time data via yfinance — always up to date"),
+        ("🎯", "7 Indicators", "RSI, SMA ratios, crossovers, volume ratios"),
+        ("🤖", "Random Forest", "A robust tree classifier built for daily predictions"),
+        ("⚡", "Live Data", "Real-time stock data fetched dynamically via yfinance"),
     ]
     for col, (icon, title, desc) in zip(cols, tips):
         col.markdown(f"""
-        <div class="card" style="text-align:center;">
+        <div class="card" style="text-align:center; height: 100%;">
         <div style="font-size:2rem">{icon}</div>
-        <div style="font-weight:600; color:#e2e8f0; margin:8px 0 4px">{title}</div>
-        <div style="font-size:0.82rem; color:#64748b">{desc}</div>
+        <div style="font-weight:600; color:#ffffff; margin:8px 0 4px">{title}</div>
+        <div style="font-size:0.82rem; color:#737373">{desc}</div>
         </div>
         """, unsafe_allow_html=True)
     st.stop()
 
-
 # ─── Data fetch ───────────────────────────────────────────────────────────────
-with st.spinner(f"Fetching data for **{ticker}**..."):
+with st.spinner(f"Fetching data for {ticker}..."):
     df_raw = fetch_data(ticker, period)
 
 if df_raw.empty:
-    st.error(f"❌ Could not fetch data for **{ticker}**. Check the ticker symbol.")
+    st.error(f"❌ Could not fetch data for {ticker}. Check the ticker symbol.")
     st.stop()
 
 # ─── Train model ─────────────────────────────────────────────────────────────
@@ -223,11 +245,15 @@ progress = st.progress(0, text="Training model...")
 time.sleep(0.1)
 
 try:
-    model, scaler, accuracy, importances = train_model(df_raw)
+    models, accuracies, scaler, importances = train_model(df_raw)
+    best_model_name = max(accuracies, key=accuracies.get)
+    best_model = models[best_model_name]
+    best_accuracy = accuracies[best_model_name]
+    
     progress.progress(70, text="Generating prediction...")
-    signal, prob_up, next_price = predict_signal(model, df_raw)
+    signal, prob_up, next_price = predict_signal(best_model, scaler, df_raw)
     progress.progress(100, text="Done!")
-    time.sleep(0.3)
+    time.sleep(0.2)
     progress.empty()
 except Exception as e:
     progress.empty()
@@ -244,25 +270,26 @@ chg_color  = "green" if day_chg >= 0 else "red"
 chg_arrow  = "▲" if day_chg >= 0 else "▼"
 
 sig_class = {"BUY": "signal-buy", "SELL": "signal-sell", "HOLD": "signal-hold"}.get(signal, "signal-hold")
-sig_emoji  = {"BUY": "↑ UP", "SELL": "↓ DOWN", "HOLD": "→ NEUTRAL"}.get(signal, "HOLD")
+sig_emoji  = {"BUY": "▲ UP", "SELL": "▼ DOWN", "HOLD": "■ NEUTRAL"}.get(signal, "HOLD")
+progress_color = {"BUY": "#22c55e", "SELL": "#ef4444", "HOLD": "#a3a3a3"}.get(signal, "#ffffff")
 
 st.markdown(f"""
 <div class="card card-accent">
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
     <div>
-      <div style="font-size:0.8rem; color:#64748b; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px">
-        Tomorrow's Signal for <span style="color:#38bdf8">{ticker}</span>
+      <div style="font-size:0.8rem; color:#737373; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px">
+        Tomorrow's Signal for <span style="color:#ffffff">{ticker}</span>
       </div>
       <div class="{sig_class}">{color_signal(signal)} {signal}</div>
-      <div style="margin-top:10px; font-size:0.85rem; color:#94a3b8">
-        Predicted direction: <strong style="color:#e2e8f0">{sig_emoji}</strong> &nbsp;|&nbsp;
-        Confidence: <strong style="color:#38bdf8">{prob_up*100:.1f}%</strong> probability of price going UP
+      <div style="margin-top:10px; font-size:0.85rem; color:#a3a3a3">
+        Predicted direction: <strong style="color:#ffffff">{sig_emoji}</strong> &nbsp;|&nbsp;
+        Confidence: <strong style="color:#ffffff">{prob_up*100:.1f}%</strong>
       </div>
     </div>
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <div class="metric-tile">
         <div class="metric-label">Last Close</div>
-        <div class="metric-value white">₹{last_close:,.2f}</div>
+        <div class="metric-value white">{fmt_price(last_close, ticker)}</div>
       </div>
       <div class="metric-tile">
         <div class="metric-label">Day Change</div>
@@ -270,11 +297,11 @@ st.markdown(f"""
       </div>
       <div class="metric-tile">
         <div class="metric-label">Est. Next Close</div>
-        <div class="metric-value">₹{next_price:,.2f}</div>
+        <div class="metric-value">{fmt_price(next_price, ticker)}</div>
       </div>
       <div class="metric-tile">
-        <div class="metric-label">Model Accuracy</div>
-        <div class="metric-value">{accuracy*100:.1f}%</div>
+        <div class="metric-label">Accuracy ({best_model_name})</div>
+        <div class="metric-value">{best_accuracy*100:.1f}%</div>
       </div>
     </div>
   </div>
@@ -282,211 +309,152 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHARTS — Price + Volume + RSI
+# CHARTS — Price + Volume (Matplotlib Candlesticks)
 # ─────────────────────────────────────────────────────────────────────────────
 df_feat  = add_features(df_raw).dropna()
 df_chart = df_feat.tail(chart_days).copy()
 
-fig = make_subplots(
-    rows=3, cols=1,
-    shared_xaxes=True,
-    row_heights=[0.55, 0.25, 0.20],
-    vertical_spacing=0.03,
-    subplot_titles=("Price & Moving Averages", "Volume", "RSI (14)")
+fig, (ax1, ax2) = plt.subplots(
+    nrows=2,
+    ncols=1,
+    sharex=True,
+    gridspec_kw={'height_ratios': [3, 1]},
+    figsize=(12, 6.5)
 )
+fig.subplots_adjust(hspace=0.08)
 
-# Candlestick
-fig.add_trace(go.Candlestick(
-    x=df_chart.index,
-    open=df_chart["Open"], high=df_chart["High"],
-    low=df_chart["Low"],  close=df_chart["Close"],
-    name="OHLC",
-    increasing_line_color="#34d399", decreasing_line_color="#f87171",
-    increasing_fillcolor="#065f46",  decreasing_fillcolor="#7f1d1d",
-), row=1, col=1)
+# Configure subplots styling for seamless card integration
+for ax in [ax1, ax2]:
+    ax.set_facecolor('#0d0d0d')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#262626')
+    ax.spines['bottom'].set_color('#262626')
+    ax.tick_params(colors='#a3a3a3', labelsize=9)
+    ax.grid(True, color='#262626', linestyle=':', linewidth=0.5)
 
-# MAs
-for ma, color in [("MA_5","#fbbf24"), ("MA_20","#38bdf8"), ("MA_50","#a78bfa")]:
-    fig.add_trace(go.Scatter(
-        x=df_chart.index, y=df_chart[ma], name=ma.replace("_"," "),
-        line=dict(color=color, width=1.2), opacity=0.85
-    ), row=1, col=1)
+# 1. Draw Candlesticks on ax1
+body_width = 0.6
+# Green candles (Close >= Open)
+up = df_chart[df_chart["Close"] >= df_chart["Open"]]
+ax1.vlines(up.index, up["Low"], up["High"], color="#22c55e", linewidth=1.0)
+ax1.bar(up.index, up["Close"] - up["Open"], body_width, bottom=up["Open"], color="#22c55e", edgecolor="#22c55e", linewidth=0)
 
-# Bollinger Bands
-fig.add_trace(go.Scatter(
-    x=df_chart.index, y=df_chart["BB_upper"],
-    line=dict(color="#64748b", width=1, dash="dot"), name="BB Upper", showlegend=False
-), row=1, col=1)
-fig.add_trace(go.Scatter(
-    x=df_chart.index, y=df_chart["BB_lower"],
-    line=dict(color="#64748b", width=1, dash="dot"), name="BB Lower",
-    fill="tonexty", fillcolor="rgba(100,116,139,0.06)", showlegend=False
-), row=1, col=1)
+# Red candles (Close < Open)
+down = df_chart[df_chart["Close"] < df_chart["Open"]]
+ax1.vlines(down.index, down["Low"], down["High"], color="#ef4444", linewidth=1.0)
+ax1.bar(down.index, down["Open"] - down["Close"], body_width, bottom=down["Close"], color="#ef4444", edgecolor="#ef4444", linewidth=0)
 
-# BUY/SELL signal annotation on last bar
-arrow_color = {"BUY": "#34d399", "SELL": "#f87171", "HOLD": "#38bdf8"}[signal]
-arrow_sym   = {"BUY": "triangle-up", "SELL": "triangle-down", "HOLD": "circle"}[signal]
-fig.add_trace(go.Scatter(
-    x=[df_chart.index[-1]], y=[df_chart["Close"].iloc[-1]],
-    mode="markers+text",
-    marker=dict(symbol=arrow_sym, size=16, color=arrow_color, line=dict(color="white", width=1)),
-    text=[f"  {signal}"], textposition="top right",
-    textfont=dict(color=arrow_color, size=13, family="JetBrains Mono"),
-    name=f"Signal: {signal}", showlegend=True,
-), row=1, col=1)
+# 2. Draw Moving Averages
+if "MA_5" in df_chart.columns:
+    ax1.plot(df_chart.index, df_chart["MA_5"], color="#ffffff", linestyle="--", label="MA 5", linewidth=1.0)
+if "MA_20" in df_chart.columns:
+    ax1.plot(df_chart.index, df_chart["MA_20"], color="#a3a3a3", linestyle=":", label="MA 20", linewidth=1.0)
 
-# Volume bars
-vol_colors = ["#34d399" if r >= 0 else "#f87171" for r in df_chart["Return_1d"]]
-fig.add_trace(go.Bar(
-    x=df_chart.index, y=df_chart["Volume"],
-    marker_color=vol_colors, name="Volume", opacity=0.7,
-), row=2, col=1)
+ax1.set_title(f"{ticker} Price & Moving Averages", loc="left", fontsize=11, fontweight="bold", color="#ffffff", pad=10)
+ax1.legend(facecolor="#0d0d0d", edgecolor="#262626")
 
-# RSI
-fig.add_trace(go.Scatter(
-    x=df_chart.index, y=df_chart["RSI"],
-    line=dict(color="#a78bfa", width=1.5), name="RSI",
-), row=3, col=1)
-fig.add_hline(y=70, line_dash="dot", line_color="#f87171", opacity=0.5, row=3, col=1)
-fig.add_hline(y=30, line_dash="dot", line_color="#34d399", opacity=0.5, row=3, col=1)
-fig.add_hrect(y0=30, y1=70, fillcolor="rgba(56,189,248,0.04)", line_width=0, row=3, col=1)
+# 3. Draw Volume on ax2 (matching green/red candle colors)
+vol_colors = ["#22c55e" if r >= 0 else "#ef4444" for r in df_chart["Return_1d"]]
+ax2.bar(df_chart.index, df_chart["Volume"], color=vol_colors, width=0.8, alpha=0.8)
+ax2.set_title("Volume", loc="left", fontsize=9, fontweight="bold", color="#a3a3a3", pad=5)
 
-# Layout
-fig.update_layout(
-    paper_bgcolor="#0a1520", plot_bgcolor="#0f1923",
-    font=dict(family="DM Sans", color="#94a3b8", size=12),
-    legend=dict(bgcolor="rgba(15,25,35,0.8)", bordercolor="#1e2d3d", borderwidth=1,
-                font=dict(size=11)),
-    margin=dict(l=0, r=0, t=40, b=0),
-    height=620,
-    xaxis_rangeslider_visible=False,
-)
-fig.update_xaxes(gridcolor="#1e2d3d", showgrid=True)
-fig.update_yaxes(gridcolor="#1e2d3d", showgrid=True)
+# Formatting Date axis
+ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+fig.autofmt_xdate()
+fig.patch.set_facecolor('#0d0d0d')
 
-st.plotly_chart(fig, use_container_width=True)
+st.pyplot(fig)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FEATURE IMPORTANCE + PROBABILITY GAUGE
+# FEATURE IMPORTANCE + CONFIDENCE
 # ─────────────────────────────────────────────────────────────────────────────
-col1, col2 = st.columns([1.4, 1])
+col1, col2 = st.columns([1.2, 1])
 
 with col1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card" style="height: 100%;">', unsafe_allow_html=True)
     st.markdown("#### 🔍 Feature Importance")
-    top_feats  = sorted(importances.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    top_feats = sorted(importances.items(), key=lambda x: x[1], reverse=True)
     feat_names = [f[0] for f in top_feats]
-    feat_vals  = [f[1] for f in top_feats]
+    feat_vals = [f[1] for f in top_feats]
 
-    fig_imp = go.Figure(go.Bar(
-        x=feat_vals[::-1], y=feat_names[::-1],
-        orientation="h",
-        marker=dict(
-            color=feat_vals[::-1],
-            colorscale=[[0,"#1e3a5f"],[0.5,"#38bdf8"],[1,"#0ea5e9"]],
-            showscale=False,
-        ),
-        text=[f"{v*100:.1f}%" for v in feat_vals[::-1]],
-        textposition="outside",
-        textfont=dict(color="#94a3b8", size=11),
-    ))
-    fig_imp.update_layout(
-        paper_bgcolor="#0f1923", plot_bgcolor="#0f1923",
-        font=dict(family="DM Sans", color="#94a3b8"),
-        margin=dict(l=0, r=50, t=10, b=10),
-        height=280,
-        xaxis=dict(showgrid=False, showticklabels=False),
-        yaxis=dict(gridcolor="#1e2d3d"),
-    )
-    st.plotly_chart(fig_imp, use_container_width=True)
+    fig_imp, ax_imp = plt.subplots(figsize=(6, 3.2))
+    ax_imp.barh(feat_names[::-1], feat_vals[::-1], color="#ffffff", edgecolor="#262626", height=0.6)
+    
+    # Clean spines
+    for spine in ['top', 'right', 'bottom']:
+        ax_imp.spines[spine].set_visible(False)
+    ax_imp.spines['left'].set_color('#262626')
+    ax_imp.grid(axis='x', linestyle='--', linewidth=0.5, color='#171717')
+    ax_imp.tick_params(axis='both', which='both', length=0)
+    ax_imp.tick_params(colors='#a3a3a3', labelsize=8)
+    fig_imp.patch.set_facecolor('#0d0d0d')
+    ax_imp.set_facecolor('#0d0d0d')
+    
+    fig_imp.tight_layout()
+    st.pyplot(fig_imp)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card" style="height: 100%;">', unsafe_allow_html=True)
     st.markdown("#### 🎯 Prediction Confidence")
-
-    # Gauge
-    fig_gauge = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=prob_up * 100,
-        number=dict(suffix="%", font=dict(color="#38bdf8", size=36, family="JetBrains Mono")),
-        gauge=dict(
-            axis=dict(range=[0, 100], tickcolor="#475569",
-                      tickfont=dict(color="#64748b"), nticks=5),
-            bar=dict(color=arrow_color, thickness=0.3),
-            bgcolor="#0a1520",
-            borderwidth=0,
-            steps=[
-                dict(range=[0,  40], color="#7f1d1d"),
-                dict(range=[40, 60], color="#1e3a5f"),
-                dict(range=[60,100], color="#065f46"),
-            ],
-            threshold=dict(line=dict(color="white", width=2), thickness=0.75, value=50),
-        ),
-        title=dict(text="Prob. Price UP Tomorrow", font=dict(color="#94a3b8", size=13)),
-    ))
-    fig_gauge.update_layout(
-        paper_bgcolor="#0f1923", plot_bgcolor="#0f1923",
-        height=240, margin=dict(l=20, r=20, t=30, b=10),
-        font=dict(family="DM Sans"),
-    )
-    st.plotly_chart(fig_gauge, use_container_width=True)
-
-    # Legend
+    st.write("")
+    st.markdown(f"""
+    <div style="text-align: center; margin: 15px 0;">
+        <div style="font-size: 3rem; font-weight: 700; color: #ffffff; font-family: 'JetBrains Mono', monospace;">
+            {prob_up*100:.1f}%
+        </div>
+        <div style="color: #737373; font-size: 0.85rem; margin-top: 5px; margin-bottom: 25px;">
+            Probability of price going UP tomorrow
+        </div>
+        <div style="background-color: #262626; border-radius: 10px; height: 10px; width: 100%; overflow: hidden;">
+            <div style="background-color: {progress_color}; height: 100%; width: {prob_up*100}%;"></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("""
-    <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:4px;">
-      <span style="background:#7f1d1d; color:#fca5a5; padding:4px 12px; border-radius:20px; font-size:0.78rem;">≤40% → SELL</span>
-      <span style="background:#1e3a5f; color:#7dd3fc; padding:4px 12px; border-radius:20px; font-size:0.78rem;">40–60% → HOLD</span>
-      <span style="background:#065f46; color:#6ee7b7; padding:4px 12px; border-radius:20px; font-size:0.78rem;">≥60% → BUY</span>
+    <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
+      <span style="border: 1px solid #632020; background:#3d1616; color:#ef4444; padding:4px 12px; border-radius:4px; font-size:0.78rem; font-weight:600;">≤40% → SELL</span>
+      <span style="border: 1px solid #333333; background:#1a1a1a; color:#a3a3a3; padding:4px 12px; border-radius:4px; font-size:0.78rem; font-weight:600;">40–60% → HOLD</span>
+      <span style="border: 1px solid #1b4d32; background:#0f2d1e; color:#22c55e; padding:4px 12px; border-radius:4px; font-size:0.78rem; font-weight:600;">≥60% → BUY</span>
     </div>
     """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# RECENT SIGNALS TABLE (last 30 days backtest)
+# MODEL COMPARISON
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("#### 📋 Recent Signals (Last 30 Days — Backtest)")
+st.markdown("#### 📊 Model Comparison & Selection")
 
-df_bt = df_feat.tail(35).copy()
-proba_list = []
-for i in range(5, len(df_bt)):
-    subset = df_raw.iloc[:-(len(df_bt) - i)]
-    if len(subset) < 60:
-        proba_list.append(0.5)
-        continue
-    try:
-        m2, _, _, _ = train_model(subset)
-        _, p, _ = predict_signal(m2, subset)
-        proba_list.append(p)
-    except Exception:
-        proba_list.append(0.5)
+col_comp1, col_comp2, col_comp3 = st.columns(3)
+model_names = ["Random Forest", "Gradient Boosting", "Logistic Regression"]
+cols = [col_comp1, col_comp2, col_comp3]
 
-df_display = df_bt.tail(len(proba_list)).copy()
-df_display["Prob_UP"]   = proba_list
-df_display["Signal"]    = df_display["Prob_UP"].apply(
-    lambda p: "🟢 BUY" if p >= 0.6 else ("🔴 SELL" if p <= 0.4 else "🔵 HOLD")
-)
-df_display["Next_Actual"] = df_display["Close"].shift(-1)
-df_display["Actual_Dir"] = (df_display["Next_Actual"] > df_display["Close"]).map(
-    {True: "↑ UP", False: "↓ DOWN"}
-)
-df_display["Conf"] = (df_display["Prob_UP"] * 100).round(1).astype(str) + "%"
-
-table = df_display[["Close", "Signal", "Conf", "Actual_Dir"]].dropna().tail(20)
-table.index = table.index.strftime("%d %b %Y")
-table.columns = ["Close Price", "Signal", "Confidence", "Actual (Next Day)"]
-table["Close Price"] = table["Close Price"].apply(lambda x: f"₹{x:,.2f}")
-
-st.dataframe(table, use_container_width=True)
+for name, col in zip(model_names, cols):
+    acc = accuracies[name]
+    is_active = (name == best_model_name)
+    status_border = "border: 1px solid #22c55e;" if is_active else "border: 1px solid #262626;"
+    status_label = "<div style='color: #22c55e; font-size: 0.75rem; font-weight: bold; margin-top: 5px;'>● ACTIVE (BEST ACCURACY)</div>" if is_active else "<div style='color: #737373; font-size: 0.75rem; margin-top: 5px;'>INACTIVE</div>"
+    
+    col.markdown(f"""
+    <div class="card" style="{status_border} text-align: center; height: 100%;">
+        <div style="font-size: 0.8rem; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.5px;">{name}</div>
+        <div style="font-size: 1.8rem; font-weight: 700; color: #ffffff; font-family: 'JetBrains Mono', monospace; margin: 10px 0 5px;">
+            {acc*100:.1f}%
+        </div>
+        {status_label}
+    </div>
+    """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FOOTER
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style='text-align:center; color:#334155; font-size:0.78rem; margin-top:40px; padding:20px 0; border-top:1px solid #1e2d3d;'>
+<div style='text-align:center; color:#525252; font-size:0.78rem; margin-top:40px; padding:20px 0; border-top:1px solid #262626;'>
 ⚠️ <strong>Disclaimer:</strong> This tool is for educational purposes only. Not financial advice. Do your own research before investing.<br>
-Built with Python · scikit-learn · yfinance · Streamlit · Plotly
+Built with Python · scikit-learn · yfinance · Streamlit · Matplotlib
 </div>
 """, unsafe_allow_html=True)
